@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Chart.js example</title>
+    <style>
+        body{
+            background-color: #111111;
+            color: white;
+            font-family: Lato,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+        }
+        .h1, .h2, .h3, .h4, .h5, .h6, h1, h2, h3, h4, h5, h6 {
+            margin-top: 0;
+            margin-bottom: .5rem;
+            font-weight: 500;
+            line-height: 1.2;
+        }
+        h1 {
+            font-size: 3rem;
+        }
+        h3 {
+            font-size: 2rem;
+        }
+        *, ::after, ::before {
+            box-sizing: border-box;
+        }
+        </style>
+        
+    <script src="plotly_dark.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js" integrity="sha512-3gJwYpMe3QewGELv8k/BX9vcqhryRdzRMxVfq6ngyWXwo03GFEzjsUm8Q7RZcHPHksttq7/GFoxjCVUjkjvPdw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css">
+    <script src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" integrity="sha512-M7nHCiNUOwFt6Us3r8alutZLm9qMt4s9951uo8jqO4UwJ1hziseL6O3ndFyigx6+LREfZqnhHxYjKRJ8ZQ69DQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.24.3/plotly.min.js" integrity="sha512-OB3KqMv8ZelkEhNOv1J6PB0aYRkn8oota0+LoGXIVD3hv1Pu9ebxFJXBopRlGkYLTLEUM7aX9zBepBzGcZzH5A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  </head>
+  <body>
+    <input
+      type="file"
+      id="json_reviews_input"
+      name="json_reviews_input"
+      accept=".json"/>
+
+    <h1>JPDB Stats</h1>
+    <h3>Overall</h3>
+    <div id="overall" style="width:100%; height:400px;"></div>
+
+    <h3>New Cards</h3>
+    <div id="new_cum" style="width:100%; height:400px;"></div>
+    <div id="new" style="width:100%; height:400px;"></div>
+
+    <h3>Repetitions</h3>
+    <div id="reps_cum" style="width:100%; height:400px;"></div>
+    <div id="reps" style="width:100%; height:400px;"></div>
+    
+    <h3>Time Spent</h3>
+    <div id="time_cum" style="width:100%; height:400px;"></div>
+    <div id="time" style="width:100%; height:400px;"></div>
+    
+    <h3>Retention</h3>
+    <div id="ret_known" style="width:100%; height:400px;"></div>
+    <div id="ret_learning" style="width:100%; height:400px;"></div>
+
+    <table id="datatable-struggles" class="display">
+        <thead>
+            <tr>
+                <th>Word</th>
+                <th>Total Reviews</th>
+                <th>Time to Learn</th>
+                <th>No. Relapses</th>
+                <th>Abandoned</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+
+
+<script>
+function is_successful(grade_string) {
+    return ['known', 'pass', 'hard', 'easy', 'okay'].includes(grade_string)
+}
+function is_fail(grade_string) {
+    return !is_successful(grade_string)
+}
+function parse_entry(entry) {
+    let history = []
+    let previous = null
+    let time_to_learn = 0
+    let relapses = 0
+    let abandoned = 0
+    let everKnown = false
+    let isKnown = false
+    let consecutive_success = 0
+    for (var review of entry.reviews) {
+        // The rows are date, fail, pass, new, abandoned, isKnown (state before the review)
+        if (previous === null)
+            history.push([new Date(review.timestamp * 1000), 0, 0, 1, 0, isKnown])
+        else if (previous.grade == 'abandoned' && review.grade != 'abandoned')
+            history.push([new Date(review.timestamp * 1000), 0, 0, 1, 0, false])
+        else if (review.grade == 'abandoned')
+            history.push([new Date(review.timestamp * 1000), 0, 0, 0, 1, false])
+        else if (previous != null && previous.timestamp != review.timestamp)
+            history.push([new Date(review.timestamp * 1000), is_fail(review.grade), is_successful(review.grade), 0, 0, isKnown])
+        previous = review
+
+        // This is the logic handling the change in state between known, and tracking word level stats
+        if (is_successful(review.grade)) {
+            if (!everKnown && time_to_learn < 1) {
+                everKnown = true
+                isKnown = true
+            } else if (!everKnown && consecutive_success == 2) {
+                everKnown = true
+                isKnown = true
+                time_to_learn += 1
+            } else if (!everKnown) {
+                consecutive_success += 1
+                time_to_learn += 1
+            } else if ((!isKnown) && (consecutive_success == 2)) {
+                isKnown = true
+            } else if (!isKnown) {
+                consecutive_success += 1
+            }
+        } else if (review.grade == 'abandoned') {
+            consecutive_success = 0
+            isKnown = false
+            abandoned += 1
+            everKnown = false
+        } else {
+            consecutive_success = 0
+            if (isKnown) {
+                isKnown = false
+                relapses += 1
+            }
+            if (!everKnown) {
+                time_to_learn += 1 
+            }
+        }
+    }
+
+    return [history, 
+            [
+                entry.spelling ?? ('Kanji: ' + entry.character), 
+                entry.reviews.length, 
+                time_to_learn, 
+                relapses, 
+                abandoned
+            ]
+        ]
+}
+async function generate_graphs() {
+    let input_data = JSON.parse(await document.querySelector("input").files[0].text())
+    let news = []
+    let reps = []
+    hist = []
+    let struggles = []
+    for (var entry of input_data.cards_vocabulary_jp_en.concat(input_data.cards_kanji_char_keyword, input_data.cards_kanji_keyword_char)) {
+        if (entry.reviews.length == 0) {
+            continue;
+        }
+        news.push(new Date(entry.reviews[0].timestamp * 1000))
+        for (var review of entry.reviews) {
+            if (review.grade != "abandoned") {
+                reps.push(new Date(review.timestamp * 1000))
+            }
+        }
+        let [entry_hist, word_totals] = parse_entry(entry)
+        hist.push.apply(hist, entry_hist);// push all
+        struggles.push(word_totals)
+    }
+    input_data=null
+
+    // This looks like ['HH:00:00': 5, ...] where 5 is the amount of reviews in that minute, which we don't care about
+    let group_by_minute = (x) => Array.from(d3.rollup(x, v => v.length, d => {d.setSeconds(0,0); return d}))
+    // This looks like ['DD 00:00:00': 3, ...] where 3 is the amount of minutes with reviews in that day
+    let group_by_day = (x, f) => Array.from(
+            d3.rollup(x, v => f ? f(v) : v.length, d => {(d[0]??d).setHours(0,0,0,0); return (d[0]??d)})).
+        sort((a,b) => new Date((a[0]??a)) - new Date((b[0]??b)))
+    const zip = (a, b) => a.map((k, i) => [k, b[i]])
+
+    let minutes = group_by_minute(reps)
+    let minutes_by_date = group_by_day(minutes)
+    let minutes_by_date_cumsum = d3.cumsum(minutes_by_date, ([date, count]) => count)
+        
+    let reps_by_date = group_by_day(reps)
+    let reps_by_date_cumsum = d3.cumsum(reps_by_date, ([date, count]) => count)
+        
+    let news_by_date = group_by_day(news)
+    let news_by_date_cumsum = d3.cumsum(news_by_date, ([date, count]) => count)
+
+    let group_hist_by_day = (h) => group_by_day(h, (x) => x.reduce((prev, curr) => prev.map((x,i) => x+curr[i+1]), [0, 0, 0, 0]))
+    let hist_by_date = group_hist_by_day(hist)
+
+    let hist_by_date_known = group_hist_by_day(hist.filter((x) => x[5] == true))
+    let hist_by_date_learning = group_hist_by_day(hist.filter((x) => x[5] != true))
+    a = hist
+    b = hist_by_date_known
+    b = hist_by_date_learning
+
+    function graph(mode, skip, div, title, xaxis, xdata, yaxis, ydata) {
+        const layout = {
+            title: title,
+            template: template,
+            xaxis: {
+                title: xaxis,
+                autorange: true
+            },
+            yaxis: {
+                title: yaxis,
+                autorange: true
+            }
+        };
+        const trace = {
+            type: mode,
+            mode: mode==='scatter' ? "lines" : undefined,
+            name: 'Count',
+            x: xdata,
+            y: ydata
+        };
+        if (skip) {
+            return [div, [trace], layout]
+        }
+        Plotly.newPlot(div, [trace], layout);
+    }
+    function fill_in_dates(date_arr, data_arr) {
+        let first_date = date_arr.at(0)
+        let last_date = date_arr.at(-1)
+
+        let existing_value_map = {}
+        for ([date, data] of zip(date_arr, data_arr)) {
+            existing_value_map[date] = data
+        }
+        
+        let ret_date_arr = []
+        let ret_data_arr = []
+        for (var d = new Date(first_date.getTime()); d <= last_date; d.setDate(d.getDate() + 1)) {
+            ret_date_arr.push(new Date(d.getTime()))
+            ret_data_arr.push(existing_value_map[d] ?? 0)
+        }
+
+        return [ret_date_arr, ret_data_arr]
+    }
+    function rolling_avg(data_arr, n) {
+        let ret = []
+        let sum = 0
+        let count = 0
+        for (let i=0; i< data_arr.length; i++) {
+            sum += data_arr[i]
+            count++
+            if (count > n) {
+                count--
+                sum -= data_arr[i-n]
+            }
+            if (i < n) {
+                ret.push(null)
+            } else {
+                ret.push(sum/count)
+            }
+        }
+        return ret
+    }
+    function cum_graph(...args) {graph('scatter', false, ...args)}
+    function bar_graph_with_avg(...args) {
+        let [div, [bar_trace], layout] = graph('bar', true, ...args)
+        
+        let [date_arr, data_arr] = fill_in_dates(args[3], args[5])
+        const avg_trace = {
+            type: 'scatter',
+            mode: "lines",
+            name: 'Rolling Average',
+            x: date_arr,
+            y: rolling_avg(data_arr, 7)
+        };
+
+        Plotly.newPlot(div, [bar_trace, avg_trace], layout);
+        return [div, [bar_trace, avg_trace], layout]
+    }
+    function retention_bar_graph_with_avg(div, title, xaxis, xdata, yaxis, failarray, passarray) {
+        let calc_ret = (f, p) => zip(f, p).map(([fp, pp]) => pp/(fp+pp))
+        let [_div, [bar_trace], layout] = graph('bar', true, div, title, xaxis, xdata, yaxis, calc_ret(failarray, passarray))
+        
+        let [date_arr, faildata_arr] = fill_in_dates(xdata, failarray)
+        let [_date_arr, passdata_arr] = fill_in_dates(xdata, passarray)
+        const avg_trace = {
+            type: 'scatter',
+            mode: "lines",
+            name: 'Rolling Average',
+            x: date_arr,
+            y: calc_ret(rolling_avg(faildata_arr, 7), rolling_avg(passdata_arr, 7))
+        };
+
+        Plotly.newPlot(div, [bar_trace, avg_trace], layout);
+    }
+    function stackbar_graph(...args) {
+        let label_arrays = args[4]
+        let value_arrays = args[5]
+        args[4] = label_arrays[0]
+        args[5] = value_arrays[0]
+        let [div, [_unused_first_bar_trace], layout] = graph('bar', true, ...args)
+        
+        let colors = {Failed:'#EF553B',Passed:'#00CC96',New:'#636EFA', Abandoned:'#D3D3D3'}
+        let traces = []
+        for ([label, values] of zip(label_arrays, value_arrays)) {
+            traces.push({
+                type: 'bar',
+                name: label,
+                x: args[3],
+                y: values,
+                marker: {
+                    color: colors[label]
+                }
+            })
+        }
+        layout.barmode = 'stack'
+
+        Plotly.newPlot(div, traces, layout);
+    }
+
+    cum_graph('new_cum', 'New Cards (Cum.)', 
+                'Date', news_by_date.map((x) => x[0]), 
+                'Total new cards added', news_by_date_cumsum)
+    bar_graph_with_avg('new', 'New Cards (Daily)', 
+                'Date', news_by_date.map((x) => x[0]), 
+                'Daily new cards added', news_by_date.map((x) => x[1]))
+
+    cum_graph('time_cum', 'Time Spent (Cum.)', 
+                'Date', minutes_by_date.map((x) => x[0]), 
+                'Total time (minutes)', minutes_by_date_cumsum)
+    bar_graph_with_avg('time', 'Time Spent (Daily)', 
+                'Date', minutes_by_date.map((x) => x[0]), 
+                'Daily time (minutes)', minutes_by_date.map((x) => x[1]))
+
+    cum_graph('reps_cum', 'Repetitions (Cum.)', 
+                'Date', reps_by_date.map((x) => x[0]), 
+                'Total repetitions', reps_by_date_cumsum)
+    bar_graph_with_avg('reps', 'Repetitions (Daily)', 
+                'Date', reps_by_date.map((x) => x[0]), 
+                'Daily repetitions', reps_by_date.map((x) => x[1]))
+
+    retention_bar_graph_with_avg('ret_known', 'Retention (Known)', 
+                'Date', hist_by_date_known.map((x) => x[0]), 
+                'Retention (%)', hist_by_date_known.map((x) => x[1][0]), hist_by_date_known.map((x) => x[1][1]))
+    retention_bar_graph_with_avg('ret_learning', 'Retention (Learning)', 
+                'Date', hist_by_date_learning.map((x) => x[0]), 
+                'Retention (%)', hist_by_date_known.map((x) => x[1][0]), hist_by_date_known.map((x) => x[1][1]))
+    
+    let transpose = m => m[0].map((x,i) => m.map(x => x[i]))
+    stackbar_graph('overall', 'Cards (Daily)', 
+                'Date', hist_by_date.map((x) => x[0]), 
+                ['Failed', 'Passed', 'New', 'Abandoned'], transpose(hist_by_date.map((x) => x[1])))
+
+    let dt = $('#datatable-struggles').DataTable();
+    dt.clear()
+    dt.rows.add(struggles)
+    dt.draw()
+    
+}
+(async function() {
+    $('#datatable-struggles').DataTable({data:[], pageLength:100});
+    document.querySelector("input").addEventListener("change", generate_graphs);
+})();
+</script>
+    
+  </body>
+</html>
