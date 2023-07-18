@@ -354,7 +354,7 @@ async function generate_graphs() {
     
 }
 (async function() {
-    $('#datatable-struggles').DataTable({data:[], pageLength:100});
+    $('#datatable-struggles').DataTable({data:[], pageLength:100, order: [[3, 'desc']]});
     document.querySelector("input").addEventListener("change", generate_graphs);
 })();
 </script>
