@@ -368,7 +368,7 @@
                 'Retention (%)', hist_by_date_known.map((x) => x[1][0]), hist_by_date_known.map((x) => x[1][1]))
             retention_bar_graph_with_avg('ret_learning', 'Retention (Learning)',
                 'Date', hist_by_date_learning.map((x) => x[0]),
-                'Retention (%)', hist_by_date_known.map((x) => x[1][0]), hist_by_date_known.map((x) => x[1][1]))
+                'Retention (%)', hist_by_date_learning.map((x) => x[1][0]), hist_by_date_learning.map((x) => x[1][1]))
 
             let transpose = m => m[0].map((x, i) => m.map(x => x[i]))
             stackbar_graph('overall', 'Cards (Daily)',
