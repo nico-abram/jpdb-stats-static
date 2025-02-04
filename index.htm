@@ -81,6 +81,9 @@
     <div id="ret_known" style="width:100%; height:400px;"></div>
     <div id="ret_learning" style="width:100%; height:400px;"></div>
 
+    <h3>Review speed (reps/min)</h3>
+    <div id="rep_speed" style="width:100%; height:400px;"></div>
+
     <table id="datatable-struggles" class="display">
         <thead>
             <tr>
@@ -383,6 +386,14 @@
             stackbar_graph('overall_cum', 'Cards (Cum.)',
                 'Date', hist_by_date.map((x) => x[0]),
                 ['Failed', 'Passed', 'New', 'Abandoned'], transpose(hist_by_date.map((x) => x[1])))
+
+            bar_graph_with_avg('rep_speed', 'Review speed (Daily)',
+                'Date', minutes_by_date.map((x) => x[0]),
+                'reps/min', zip(minutes_by_date
+	                			.sort((a, b) => new Date((a[0] ?? a)) - new Date((b[0] ?? b))), 
+					reps_by_date
+	                			.sort((a, b) => new Date((a[0] ?? a)) - new Date((b[0] ?? b))), 
+					).map((x) => x[1][1] / x[0][1]))
 
             let dt = $('#datatable-struggles').DataTable();
             dt.clear()
