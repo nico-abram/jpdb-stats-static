@@ -60,6 +60,19 @@
 <body>
     <input type="file" id="json_reviews_input" name="json_reviews_input" accept=".json" />
 
+    <br />
+
+    <label for="secs_per_review">Maximum seconds assumed per review:</label>
+    <select name="secs_per_review" id="secs_per_review">
+      <option value="60">60</option>
+      <option value="30">30</option>
+      <option value="15">15</option>
+      <option value="6">5</option>
+      <option value="3">3</option>
+      <option value="1">1</option>
+    </select>
+
+
     <h1>JPDB Stats</h1>
     <h3>Overall</h3>
     <div id="overall" style="width:100%; height:400px;"></div>
@@ -198,9 +211,13 @@
                 struggles.push(word_totals)
             }
             input_data = null
-
+            
+            let secs_per_review = Number(document.getElementById("secs_per_review").value);
+            function quantize_seconds(secs) {
+                return Math.floor(secs/secs_per_review)*secs_per_review
+            }
             // This looks like ['HH:00:00': 5, ...] where 5 is the amount of reviews in that minute, which we don't care about
-            let group_by_minute = (x) => Array.from(d3.rollup(x, v => v.length, d => { d.setSeconds(0, 0); return d }))
+            let group_by_minute = (x) => Array.from(d3.rollup(x, v => v.length, d => { d = new Date(d); d.setSeconds(quantize_seconds(d.getSeconds()), 0); return d }))
             // This looks like ['DD 00:00:00': 3, ...] where 3 is the amount of minutes with reviews in that day
             let group_by_day = (x, f) => Array.from(
                 d3.rollup(x, v => f ? f(v) : v.length, d => { (d[0] ?? d).setHours(0, 0, 0, 0); return (d[0] ?? d) })).
@@ -208,8 +225,12 @@
             const zip = (a, b) => a.map((k, i) => [k, b[i]])
 
             let minutes = group_by_minute(reps)
-            let minutes_by_date = group_by_day(minutes)
+            let minutes_by_date = group_by_day(minutes).map(x => {x[1] = x[1]*secs_per_review/60; return x;})
             let minutes_by_date_cumsum = d3.cumsum(minutes_by_date, ([date, count]) => count)
+
+            secs_per_review = 60
+            let minutes_q60 = group_by_minute(reps)
+            let minutes_by_date_q60 = group_by_day(minutes_q60).map(x => {x[1] = x[1]*secs_per_review/60; return x;})
 
             let reps_by_date = group_by_day(reps)
             let reps_by_date_cumsum = d3.cumsum(reps_by_date, ([date, count]) => count)
@@ -388,8 +409,8 @@
                 ['Failed', 'Passed', 'New', 'Abandoned'], transpose(hist_by_date.map((x) => x[1])))
 
             bar_graph_with_avg('rep_speed', 'Review speed (Daily)',
-                'Date', minutes_by_date.map((x) => x[0]),
-                'reps/min', zip(minutes_by_date
+                'Date', minutes_by_date_q60.map((x) => x[0]),
+                'reps/min', zip(minutes_by_date_q60
 	                			.sort((a, b) => new Date((a[0] ?? a)) - new Date((b[0] ?? b))), 
 					reps_by_date
 	                			.sort((a, b) => new Date((a[0] ?? a)) - new Date((b[0] ?? b))), 
@@ -404,6 +425,7 @@
         (async function () {
             $('#datatable-struggles').DataTable({ data: [], pageLength: 100, order: [[3, 'desc']] });
             document.querySelector("input").addEventListener("change", generate_graphs);
+            document.querySelector("select").addEventListener("change", generate_graphs);
         })();
     </script>
 
